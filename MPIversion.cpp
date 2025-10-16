@@ -80,10 +80,12 @@ int main(int argc, char **argv)
     // Entrada: solo el proceso 0 solicita la cadena inicial al usuario
     // -------------------------------------------------------------------------
     string input;
-    if (rank == 0)
-    {
-        cout << "Ingrese cadena de 16 caracteres (# como espacio): ";
-        cin >> input;
+    if (rank == 0) {
+        if (argc < 2) {
+            cerr << "Uso: mpirun -np 4 ./MPIversion <estado_inicial>\n";
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        input = argv[1];
     }
 
     // Broadcast de la cadena inicial a todos los procesos
