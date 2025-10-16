@@ -1,130 +1,17 @@
-#include <iostream>
-#include <vector>
-#include <string>
-#include <algorithm>
-#include <queue>
-#include <unordered_set>
-#include <cmath>
-#include <unordered_map>
+/*
+===============================================================================
+    Nombre:    Santiago Arango Henao
+    Curso:     Programación Paralela
+    Entrega Parcial 2
+===============================================================================
+*/
 
+#include <bits/stdc++.h>
 using namespace std;
 
 const string GOAL = "ABCDEFGHIJKLMNO#";
-void ejecutarInstruccion(const string &cadena, const string &accion) {
-    string resultado = cadena;
-    int indice = cadena.find('#');
 
-    if (indice == string::npos) {
-        cerr << "Error: No se encontró el carácter '#' en la cadena." << endl;
-        return;
-    }
-
-    bool movimientoValido = true;
-
-    if (accion == "DERECHA") {
-        if (indice % 4 != 3)
-            swap(resultado[indice], resultado[indice + 1]);
-        else
-            movimientoValido = false;
-    } 
-    else if (accion == "IZQUIERDA") {
-        if (indice % 4 != 0)
-            swap(resultado[indice], resultado[indice - 1]);
-        else
-            movimientoValido = false;
-    } 
-    else if (accion == "ARRIBA") {
-        if (indice >= 4)
-            swap(resultado[indice], resultado[indice - 4]);
-        else
-            movimientoValido = false;
-    } 
-    else if (accion == "ABAJO") {
-        if (indice < 12)
-            swap(resultado[indice], resultado[indice + 4]);
-        else
-            movimientoValido = false;
-    } 
-    else {
-        cout << "Comando no reconocido." << endl;
-        return;
-    }
-
-    if (!movimientoValido) {
-        cout << "Movimiento no permitido desde la posición actual." << endl;
-        return;
-    }
-
-    cout << "\nNueva configuración de la matriz:\n";
-    for (int fila = 0; fila < 4; ++fila) {
-        for (int col = 0; col < 4; ++col) {
-            cout << resultado[fila * 4 + col] << ' ';
-        }
-        cout << '\n';
-
-    }
-}
-
-void mostrarAccionesDisponibles(const string &estado, const string &orden) {
-    int indice = estado.find('#');
-    vector<string> movimientosPosibles;
-
-    if (indice == string::npos) {
-        cerr << "Error: No se encontró el carácter '#' en la cadena." << endl;
-        return;
-    }
-
-    int fila = indice / 4;
-    int columna = indice % 4;
-
-    if (columna < 3) movimientosPosibles.push_back("RIGHT");
-    if (columna > 0) movimientosPosibles.push_back("LEFT");
-    if (fila > 0)    movimientosPosibles.push_back("UP");
-    if (fila < 3)    movimientosPosibles.push_back("DOWN");
-
-    cout << "Desde la posición actual puedes mover: ";
-    for (const auto &mov : movimientosPosibles) {
-        cout << mov << " ";
-    }
-    cout << '\n';
-}
-
-vector<pair<string, string>> obtenerVecinos(const string& state) {
-    int pos = state.find('#');
-    vector<pair<string, string>> neighbors;
-
-    // RIGHT
-    if (pos % 4 < 3) {
-        string new_state = state;
-        swap(new_state[pos], new_state[pos + 1]);
-        neighbors.push_back({new_state, "RIGHT"});
-    }
-
-    // LEFT
-    if (pos % 4 > 0) {
-        string new_state = state;
-        swap(new_state[pos], new_state[pos - 1]);
-        neighbors.push_back({new_state, "LEFT"});
-    }
-
-    // UP
-    if (pos / 4 > 0) {
-        string new_state = state;
-        swap(new_state[pos], new_state[pos - 4]);
-        neighbors.push_back({new_state, "UP"});
-    }
-
-    // DOWN
-    if (pos / 4 < 3) {
-        string new_state = state;
-        swap(new_state[pos], new_state[pos + 4]);
-        neighbors.push_back({new_state, "DOWN"});
-    }
-
-    return neighbors;
-}
-
-
+// -------------------- utilidades: movimientos / vecinos ---------------------
 struct Move { int dr, dc; const char* name; };
 static const Move MOVES[4] = {
     {-1, 0, "UP"},
@@ -133,7 +20,8 @@ static const Move MOVES[4] = {
     { 0,+1, "RIGHT"},
 };
 
-static inline void vecinos(const string& s, vector<pair<string,string> >& out) {
+// llena `out` con pares (estado_resultante, accion_string)
+static inline void vecinos(const string& s, vector<pair<string,string>>& out) {
     out.clear();
     int pos = (int)s.find('#');
     int r = pos / 4, c = pos % 4;
@@ -144,59 +32,51 @@ static inline void vecinos(const string& s, vector<pair<string,string> >& out) {
             string t = s;
             int np = nr * 4 + nc;
             swap(t[pos], t[np]);
-            out.push_back(make_pair(t, string(MOVES[k].name)));
+            out.emplace_back(t, string(MOVES[k].name));
         }
     }
 }
 
-void bfs(const string& start) {
-    string objetivo = "ABCDEFGHIJKLMNO#";
+// versión que devuelve solo estados (útil en BFS original)
+inline vector<pair<string,string>> obtenerVecinos(const string& state) {
+    vector<pair<string,string>> neigh;
+    vecinos(state, neigh);
+    return neigh;
+}
 
-    if (start == objetivo) {
-        cout << "El puzzle ya esta resuelto." << endl;
-    }else{
-        queue<pair<string, int>> q;  // Estado, profundidad
-        unordered_set<string> visited; // Conjunto para estados visitados
+// -------------------- heurísticas ------------------------------------------
+static inline int h1_misplaced(const string& s) {
+    int c = 0;
+    for (int i = 0; i < 16; ++i)
+        if (s[i] != '#' && s[i] != GOAL[i]) ++c;
+    return c;
+}
 
-        q.push({start, 0});
-        visited.insert(start);
-
-        bool found = false;
-        string target_state;
-        int min_moves = -1;
-
-        while (!q.empty() && !found) {
-            auto front = q.front();
-            q.pop();
-            string current = front.first;
-            int depth = front.second;
-
-            if (current == objetivo) {
-                found = true;
-                target_state = current;
-                min_moves = depth;
-                found = true;
-            }else{
-                auto neighbors = obtenerVecinos(current);
-                for (const auto& p : neighbors) {
-                    string next_state = p.first;
-                    string move = p.second;
-                    if (visited.find(next_state) == visited.end()) {
-                        visited.insert(next_state);
-                        q.push({next_state, depth + 1});
-                    }
-                }
-            }
-            
-        }
-        if (!found) {
-            cout << "No hay solucion" << endl;
-            return;
-        }
-        cout << "Numero minimo de movimientos: " << min_moves << endl;  
+static int goal_r[256], goal_c[256];
+static void init_goal_pos() {
+    for (int i = 0; i < 256; ++i) { goal_r[i] = goal_c[i] = -1; }
+    for (int i = 0; i < 16; ++i) {
+        unsigned char ch = (unsigned char)GOAL[i];
+        goal_r[ch] = i / 4;
+        goal_c[ch] = i % 4;
     }
 }
 
+static inline int h2_manhattan(const string& s) {
+    int sum = 0;
+    for (int i = 0; i < 16; ++i) {
+        char ch = s[i];
+        if (ch == '#') continue;
+        int r = i / 4, c = i % 4;
+        int gr = goal_r[(unsigned char)ch], gc = goal_c[(unsigned char)ch];
+        // seguridad: en caso de que goal_r no esté bien inicializado, evitamos UB
+        if (gr >= 0 && gc >= 0)
+            sum += abs(r - gr) + abs(c - gc);
+    }
+    return sum;
+}
+
+// -------------------- comprobación de solucionabilidad ----------------------
 static inline int inversions(const string& s) {
     string t; t.reserve(16);
     for (char ch : s) if (ch != '#') t.push_back(ch);
@@ -207,60 +87,30 @@ static inline int inversions(const string& s) {
     return inv;
 }
 
-
-struct Node {
-    int f, g;
-    string state;
-    // priority_queue en C++ es max-heap; invertimos para tener min-heap
-    bool operator<(const Node& other) const {
-        if (f != other.f) return f > other.f;
-        // tie-break por g mayor (más profundo) para favorecer expansiones más cercanas a la meta
-        return g < other.g;
-    }
-};
-
-
-// h1: fichas fuera de lugar (ignorar '#')
-static inline int h1_misplaced(const string& s) {
-    int c = 0;
-    for (int i = 0; i < 16; ++i)
-        if (s[i] != '#' && s[i] != GOAL[i]) ++c;
-    return c;
-}
-
-
-static int goal_r[256], goal_c[256];
-static void init_goal_pos() {
-    for (int i = 0; i < 256; ++i) goal_r[i] = goal_c[i] = -1;
-    for (int i = 0; i < 16; ++i) {
-        char ch = GOAL[i];
-        goal_r[(unsigned char)ch] = i / 4;
-        goal_c[(unsigned char)ch] = i % 4;
-    }
-}
-
-// h2: Manhattan (ignorar '#')
-static inline int h2_manhattan(const string& s) {
-    int sum = 0;
-    for (int i = 0; i < 16; ++i) {
-        char ch = s[i];
-        if (ch == '#') continue;
-        int r = i / 4, c = i % 4;
-        int gr = goal_r[(unsigned char)ch], gc = goal_c[(unsigned char)ch];
-        sum += abs(r - gr) + abs(c - gc);
-    }
-    return sum;
-}
-
 static inline bool solvable(const string& s) {
     int inv = inversions(s);
     int blank = (int)s.find('#');
     int rowFromBottom = 4 - (blank / 4); // 1..4 (1 = última fila)
+    // Regla estándar para ancho par (4): (inversions + rowFromBottom) % 2 == 1 -> solvable
     return ((inv + rowFromBottom) % 2) == 1;
 }
 
-// A*: heur_id = 1 -> h1, heur_id = 2 -> h2
-// Si path_out != NULL, se reconstruyen acciones
+// -------------------- A* (secuencial) -------------------------------------
+struct Node {
+    int f;
+    int g;
+    string state;
+};
+// Comparador: queremos un min-heap por f; si f igual, preferir mayor g (tiebreak)
+struct NodeCompare {
+    bool operator()(const Node& a, const Node& b) const {
+        if (a.f != b.f) return a.f > b.f;     // menor f -> mayor prioridad
+        return a.g < b.g;                     // si f igual, mayor g -> mayor prioridad
+    }
+};
+
+// Devuelve costo (número de pasos) o -1 si no solucionable / no encontrado.
+// Si path_out != nullptr, reconstruye la secuencia de acciones (strings).
 static int astar(const string& start, int heur_id, vector<string>* path_out) {
     if (start == GOAL) {
         if (path_out) path_out->clear();
@@ -268,10 +118,10 @@ static int astar(const string& start, int heur_id, vector<string>* path_out) {
     }
     if (!solvable(start)) return -1;
 
-    // Estructuras A*
-    priority_queue<Node> open;
-    unordered_map<string,int> gcost; // mejor g conocido
-    unordered_map<string, pair<string,string> > parent; // estado -> (padre, acción)
+    // inicializar tablas
+    priority_queue<Node, vector<Node>, NodeCompare> open;
+    unordered_map<string,int> gcost;                            // mejor g conocido
+    unordered_map<string, pair<string,string>> parent;         // hijo -> (padre, accion)
 
     gcost.reserve(200000);
     parent.reserve(200000);
@@ -280,24 +130,25 @@ static int astar(const string& start, int heur_id, vector<string>* path_out) {
     open.push(Node{h0, 0, start});
     gcost[start] = 0;
 
-    vector<pair<string,string> > neigh; neigh.reserve(4);
+    vector<pair<string,string>> neigh; neigh.reserve(4);
 
     while (!open.empty()) {
         Node cur = open.top(); open.pop();
-        const string& u = cur.state;
+        const string &u = cur.state;
         int g = cur.g;
 
-        // Podría estar obsoleto si ya conocemos un g mejor
-        unordered_map<string,int>::iterator itg = gcost.find(u);
-        if (itg == gcost.end() || g > itg->second) continue;
+        // Si tenemos registrado un g mejor para u, saltamos (este nodo está obsoleto)
+        auto itg = gcost.find(u);
+        if (itg != gcost.end() && g > itg->second) continue;
 
+        // Meta alcanzada
         if (u == GOAL) {
             if (path_out) {
-                // reconstruir
+                // reconstruir ruta desde GOAL hasta start
                 vector<string> rev;
                 string x = u;
                 while (x != start) {
-                    pair<string,string> pp = parent[x];
+                    auto pp = parent[x];
                     rev.push_back(pp.second);
                     x = pp.first;
                 }
@@ -307,12 +158,14 @@ static int astar(const string& start, int heur_id, vector<string>* path_out) {
             return g;
         }
 
+        // expandir vecinos
         vecinos(u, neigh);
-        for (size_t i = 0; i < neigh.size(); ++i) {
-            const string& v = neigh[i].first;
-            const string& act = neigh[i].second;
+        for (auto &p : neigh) {
+            const string &v = p.first;
+            const string &act = p.second;
             int ng = g + 1;
-            if (!gcost.count(v) || ng < gcost[v]) {
+            auto it = gcost.find(v);
+            if (it == gcost.end() || ng < it->second) {
                 gcost[v] = ng;
                 int h = (heur_id == 1 ? h1_misplaced(v) : h2_manhattan(v));
                 open.push(Node{ng + h, ng, v});
@@ -323,59 +176,89 @@ static int astar(const string& start, int heur_id, vector<string>* path_out) {
     return -1;
 }
 
+// -------------------- BFS simple (para la opción 4) ------------------------
+void bfs(const string& start) {
+    if (start == GOAL) {
+        cout << "El puzzle ya está resuelto.\n";
+        cout << "Número mínimo de movimientos: 0\n";
+        return;
+    }
+    if (!solvable(start)) {
+        cout << "No es solucionable (paridad incompatible).\n";
+        return;
+    }
 
-int main(){
-    
-    int tarea;
+    queue<pair<string,int>> q;
+    unordered_set<string> visited;
+    q.push({start, 0});
+    visited.insert(start);
+
+    while (!q.empty()) {
+        auto cur = q.front(); q.pop();
+        string s = cur.first;
+        int d = cur.second;
+        if (s == GOAL) {
+            cout << "Número mínimo de movimientos: " << d << "\n";
+            return;
+        }
+        auto nb = obtenerVecinos(s);
+        for (auto &p : nb) {
+            const string &ns = p.first;
+            if (!visited.count(ns)) {
+                visited.insert(ns);
+                q.push({ns, d + 1});
+            }
+        }
+    }
+    cout << "No se encontró solución (bfs terminó).\n";
+}
+
+// -------------------- interfaz principal -----------------------------------
+int main() {
+    // Inicializar tabla de posiciones objetivo (NECESARIO antes de usar h2)
+    init_goal_pos();
+
     cout << "Seleccione la tarea a ejecutar:\n";
     cout << "  4 -> BFS costo\n";
     cout << "  5 -> A* h1 (costo)\n";
     cout << "  6 -> A* h2 (costo)\n";
     cout << "  7 -> A* h2 (acciones)\n";
     cout << "Opción: ";
+    int tarea;
     cin >> tarea;
-
     if (cin.fail() || tarea < 4 || tarea > 7) {
-        cerr << "Tarea no válida. Debe ser 4, 5, 6 o 7.\n";
+        cerr << "Tarea no válida. Debe ser 4,5,6 o 7.\n";
         return 1;
     }
 
+    cout << "Ingrese el estado inicial (16 caracteres, use '#' para el hueco):\n";
     string start;
-    cout << "Ingrese el estado inicial (16 caracteres): ";
     cin >> start;
-
     if (start.size() != 16) {
         cerr << "Error: el estado debe tener exactamente 16 caracteres.\n";
         return 1;
     }
 
     if (tarea == 4) {
+        // BFS por niveles (devuelve costo mínimo)
         bfs(start);
-    } 
-    else if (tarea == 5) {
+    } else if (tarea == 5) {
         int cost = astar(start, 1, nullptr);
-        if (cost < 0) cout << "UNSOLVABLE\n";
-        else cout << "Costo: " << cost << "\n";
-    } 
-    else if (tarea == 6) {
+        if (cost < 0) cout << "UNSOLVABLE\n"; else cout << "Costo: " << cost << "\n";
+    } else if (tarea == 6) {
         int cost = astar(start, 2, nullptr);
-        if (cost < 0) cout << "UNSOLVABLE\n";
-        else cout << "Costo: " << cost << "\n";
-    } 
-    else if (tarea == 7) {
+        if (cost < 0) cout << "UNSOLVABLE\n"; else cout << "Costo: " << cost << "\n";
+    } else { // tarea == 7
         vector<string> path;
         int cost = astar(start, 2, &path);
         if (cost < 0) {
             cout << "UNSOLVABLE\n";
             return 0;
         }
-
-        // Si quieres, puedes mostrar también el costo
-        // cout << "Costo: " << cost << "\n";
+        cout << "Costo: " << cost << "\n";
         cout << "Secuencia de acciones:\n";
-        for (const auto& step : path) {
-            cout << step << "\n";
-        }
+        for (auto &a : path) cout << a << "\n";
     }
+
     return 0;
 }
